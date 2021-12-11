@@ -1,67 +1,52 @@
 import des_modes as desMode
-#passlib.hash was used for testing purposes before implementing DES, not in final version but was frequently used to 
-#help build a lot of the code before the personal DES implimentation. 
-#passLib.lmhash.hash(word) was really the only thing used for testing
 import passlib.hash as passLib
 import time
-# Read both of the text files for their respective info and store each line in a list
-f = open("pwtext.txt", "r")
-passwordLines = f.readlines()
-f.close()
 
-f = open("dictionary.txt", "r")
-dictionaryWords = f.readlines()
-f.close()
+def _read_file_content(filename : str):
+    """Returns a list containing content per line of file"""
+    f = open(filename, "r")
+    lines = f.readlines()
+    f.close()
+    return lines
 
-# make a list to store the values in and snip off the whitespaces, \n, and 2nd number in the list
-user1 = passwordLines[0].split(':')
+def _clean_hash(hash_line: str):
+    """ Clean hash up from string to a list of strings to only contain username, id, left side of hash, and right hash:
+     BEFORE  "bozo:1001:CE2390AA223560BBE917F8D6FA472D2C:91AFAADB932D20FFD6A26AD91BE226E8:::"
+     AFTER ['bozo', '1001', 'CE2390AA223560BBE917F8D6FA472D2C', '91AFAADB932D20FFD6A26AD91BE226E8']
+     """
+    #Remove trailing ":::" from string
+    clean_hash = hash_line[:len(hash_line)-4] 
 
-user2 = passwordLines[1].split(':')
+    #Divide each item by ":"
+    return clean_hash.split(':')
 
-user3 = passwordLines[2].split(':')
-#There was probably a clearner way to remove enteries from the list, but this worked and took few lines of code...
-#Just deletes any useless info, the second number and the extra blank words at the end of the list to be specific.
-# bozo:1001:CE2390AA223560BBE917F8D6FA472D2C:91AFAADB932D20FFD6A26AD91BE226E8:::
-# tallman:1002:D3CC6BB953241B61EFB303C2F126705E:8C219140EF269E446F982AD0FD989AC1:::
-# zerocool:500:6F3989F97ADB6701C2676C7231D0B1B5:4BCA5C033CC8A87FF18696E7F35DE514:::
-for i in range(1, 3):
-    if i == 1:
-        del user1[i]
-        del user2[i]
-        del user3[i]
-    del user1[-i]
-    del user2[-i]
-    del user3[-i]
+    
 
-
-
-#Luke Frisbee Helped me out a lot for the padding required before passing our code 
-#into DES. The actual DES code is my own but this padding is mainly from him.
-
-def tobits(s):
+def _tobits(plain_string: str):
+    """ Take in a string and return the entire bits """
     result = []
-    for c in s:
+    for c in plain_string:
         bits = bin(ord(c))[2:]
         bits = '00000000'[len(bits):] + bits
         result.extend([int(b) for b in bits])
     return result
 
-# Convert string of bits to bytes
 
 
-def bitstring_to_bytes(s):
-    return int(s, 2).to_bytes(len(s) // 8, byteorder='big')
+def _bitstring_to_bytes(plain_string: str):
+    return int(plain_string, 2).to_bytes(len(plain_string) // 8, byteorder='big')
 
 # LM hashes 7 byte half password using DES
-
-def lmHasher(word):
+def _lmHasher(word):
+    """ The word needs 16 char length, so append 0's to the end """
     word.ljust(16, '0')
 
-def lmHalfHash(password):
+def _lmHalfHash(password):
+    """ lm Hash for one side of the hash """
     password = password.upper()
 
     # Convert password to bits
-    bits = tobits(password)
+    bits = _tobits(password)
 
     # split bits into groups of size 7 bytes
     byte_array = [bits[i:i+7] for i in range(0, len(bits), 7)]
@@ -75,14 +60,15 @@ def lmHalfHash(password):
             final_byte_string += str(bit)
 
     # Generate key of 64 bytes from string of bits
-    key = bitstring_to_bytes(final_byte_string)
+    key = _bitstring_to_bytes(final_byte_string)
 
     return desMode.encrypt(b"KGS!@#$%", key)
 
 
-def bruteForcePasswordCrack(userInfoList):
+def bruteForcePasswordCrack(userInfoList: list):
+    """ Hash our dictionary word with DES and see if it matches given hash """
     startTime = time.time()
-    for word in dictionaryWords:
+    for word in dictionary_txt:
         # word = "armadillos\n"
        # Remove the '\n' and uppercase the word, uppercase it, and add null padding to 14 chars
         word = word.upper()
@@ -90,8 +76,8 @@ def bruteForcePasswordCrack(userInfoList):
         ogWord = word
         word = word.ljust(14, "\x00")
         # Using DES to create each half of the hash
-        leftHash = lmHalfHash(word[:7]).hex().upper()
-        rightHash = lmHalfHash(word[7:]).hex().upper()
+        leftHash = _lmHalfHash(word[:7]).hex().upper()
+        rightHash = _lmHalfHash(word[7:]).hex().upper()
 
         # if end of word has "s" then we want to check that hash without the "s":
         sWord = ""
@@ -100,20 +86,20 @@ def bruteForcePasswordCrack(userInfoList):
         if ogWord[-1:] == "S":
             sWord = ogWord[:-1]
             sWord = sWord.ljust(14, "\x00")
-            l_sWordHash = lmHalfHash(sWord[:7]).hex().upper()
-            r_sWordHash = lmHalfHash(sWord[7:]).hex().upper()
+            l_sWordHash = _lmHalfHash(sWord[:7]).hex().upper()
+            r_sWordHash = _lmHalfHash(sWord[7:]).hex().upper()
 
         print(ogWord)
 
         # Check to see if both hashes match
-        if (leftHash+rightHash == userInfoList[1]):
+        if (leftHash+rightHash == userInfoList[2]):
             solvedPassword = word.lower()
             endTime = time.time()
             print("\nPASSWORD FOUND!!(took {0} seconds to brute force)\nUSERNAME: ".format(
                 round((endTime-startTime), 2)) + userInfoList[0] + "\nPASSWORD: " + solvedPassword)
             return(solvedPassword.lower())
 
-        elif(l_sWordHash+r_sWordHash == userInfoList[1]):
+        elif(l_sWordHash+r_sWordHash == userInfoList[2]):
             solvedPassword = sWord.lower()
             endTime = time.time()
             print("\nPASSWORD FOUND!!(took {0} seconds to brute force)\nUSERNAME: ".format(
@@ -128,12 +114,18 @@ def bruteForcePasswordCrack(userInfoList):
 #This checks the left side of the hash first and if it doesn't match the firsth half
 #of the user's hash we got, skip the word since it clearly isn't even close to being it
 def complexPasswordCrack(userInfoList):
+    """ Optimized version for Password Cracker
+
+        The main difference between this function and brutrForcePasswordCrack() is that 
+        This checks the left side of the hash first and if it doesn't match the firsth half
+        of the user's hash we got, skip the word since it clearly isn't even close to being it
+"""
     startTime = time.time()
     #Get the user's password hash to compare our hash to later
-    passwordHash = userInfoList[1]
-    userLeftHash = userInfoList[1][0:len(userInfoList[1])//2]
-    userRightHash = userInfoList[1][len(
-        userInfoList[1])//2:len(userInfoList[1])]
+    passwordHash = userInfoList[2]
+    userLeftHash = userInfoList[2][0:len(userInfoList[2])//2]
+    userRightHash = userInfoList[2][len(
+        userInfoList[2])//2:len(userInfoList[2])]
 
     #Instead of trying numbers 0-9 for 3 digits which would take 1000 times longer for us to solve,
     #just try a bunch of common numbers people use for their passwords.
@@ -141,7 +133,7 @@ def complexPasswordCrack(userInfoList):
     commonNumbers = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16",
                      "000", "111", "222", "333", "444", "555", "666", "777", "888", "999", "123", "456", "789", "123", "121"]
     #Go through each dictionary word
-    for word in dictionaryWords:
+    for word in dictionary_txt:
         # word = "corvettes\n"
         print(word)
         # remove \n and make uppercase
@@ -156,13 +148,13 @@ def complexPasswordCrack(userInfoList):
             sWord = ogWord
             sWord.ljust(14, "\x00")
             l_sWord = word[:7].ljust(7, "\x00")
-            l_sWordHash = lmHalfHash(l_sWord).hex().upper()
+            l_sWordHash = _lmHalfHash(l_sWord).hex().upper()
 
         #left side of word, add padding incase its a lenght less of 7
         leftSide = word[:7].ljust(7, "\x00")
         # If the left side of the hash doesn't match the left side of the hash of the hash we
         # recieved from userinfo, move to the next word since we know its not the correct word
-        if userLeftHash != lmHalfHash(leftSide).hex().upper():
+        if userLeftHash != _lmHalfHash(leftSide).hex().upper():
             continue
 
         #now that we know what the left is, add all of these numbers to the left half of the words
@@ -171,7 +163,7 @@ def complexPasswordCrack(userInfoList):
             # If there is no "S" at the end of the word
             if sWord == "":
                 rightSide = (word[7:]+num).ljust(7, "\x00")
-                rightHash = lmHalfHash(rightSide).hex().upper()
+                rightHash = _lmHalfHash(rightSide).hex().upper()
                 #Does the number we added to the word match the hash?
                 if rightHash == userRightHash:
                     solvedPassword = (word+num).lower()
@@ -182,7 +174,7 @@ def complexPasswordCrack(userInfoList):
             #If there is an "S" at the end of the word
             else:
                 rightSide = (word[7:-1] + num).ljust(7, "\x00")
-                rightHash = lmHalfHash(rightSide).hex().upper()
+                rightHash = _lmHalfHash(rightSide).hex().upper()
                 #Does the number we added to the word match the hash?
                 if rightHash == userRightHash:
                     solvedPassword = (word[:-1]+num).lower()
@@ -192,6 +184,13 @@ def complexPasswordCrack(userInfoList):
                     return(solvedPassword.lower())
 
 
+
 if __name__ == '__main__':
-    bozoPassword = bruteForcePasswordCrack(user1)
+    hash_txt = _read_file_content("pwtext.txt")
+    dictionary_txt = _read_file_content("dictionary.txt")
+
+    user1 = _clean_hash(hash_txt[0])
+    user2 = _clean_hash(hash_txt[1])
+    user3 = _clean_hash(hash_txt[2])
+    #bozoPassword = bruteForcePasswordCrack(user1)
     tallmanPassword = complexPasswordCrack(user2)
